@@ -1,6 +1,4 @@
 flask
-pandas
-sentence-transformers
 transformers
+sentence-transformers
 scikit-learn
-gunicorn
