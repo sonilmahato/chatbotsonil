@@ -1,116 +1,82 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, render_template_string
 import pandas as pd
-import numpy as np
 import re
-import faiss
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 from transformers import pipeline
 
-# === Load CSV ===
-df = pd.read_csv("university_chatbot_data.csv")
-df.columns = [col.lower().strip() for col in df.columns]
-if 'question' not in df.columns or 'answer' not in df.columns:
-    raise ValueError("CSV must contain 'question' and 'answer' columns.")
+app = Flask(__name__)
 
-df = df.dropna(subset=['question', 'answer'])
+# Load CSV
+df = pd.read_csv("university_data.csv")
 df['question'] = df['question'].astype(str).str.strip()
 df['answer'] = df['answer'].astype(str).str.strip()
-
 questions = df['question'].tolist()
 answers = df['answer'].tolist()
 
-# === Load Embeddings & Index ===
-embed_model = SentenceTransformer('all-MiniLM-L6-v2')
-question_embeddings = embed_model.encode(questions)
-question_embeddings = np.array(question_embeddings).astype('float32')
-
-index = faiss.IndexFlatL2(question_embeddings.shape[1])
-index.add(question_embeddings)
-
-# === Load RAQG Generator ===
+# Load Models
+embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 qg_pipeline = pipeline("text2text-generation", model="google/flan-t5-base")
+question_embeddings = embed_model.encode(questions)
 
-# === Utility Functions ===
 def normalize(text):
     return re.sub(r'[^a-zA-Z0-9\s]', '', text.lower().strip())
 
 def is_exact_match(query):
-    clean_query = query.strip().lower()
+    q_norm = normalize(query)
     for i, q in enumerate(questions):
-        if clean_query == q.strip().lower() or normalize(clean_query) == normalize(q):
-            return True, q, answers[i]
-    return False, None, None
+        if normalize(q) == q_norm:
+            return True, answers[i]
+    return False, None
 
-def get_related_questions(query, limit=5):
-    query_keywords = set(normalize(query).split())
-    scored_questions = []
+def get_top_matches(query, top_k=5):
+    query_vec = embed_model.encode([query])
+    sims = cosine_similarity(query_vec, question_embeddings)[0]
+    top_indices = sims.argsort()[::-1][:top_k]
+    return [questions[i] for i in top_indices if sims[i] > 0.5]
 
-    for q in questions:
-        q_keywords = set(normalize(q).split())
-        overlap = query_keywords.intersection(q_keywords)
-        if overlap:
-            score = len(overlap) / len(q_keywords)
-            scored_questions.append((score, q))
-
-    sorted_qs = sorted(scored_questions, key=lambda x: x[0], reverse=True)
-    seen = set()
-    unique_qs = []
-    for _, q in sorted_qs:
-        if q not in seen:
-            unique_qs.append(q)
-            seen.add(q)
-        if len(unique_qs) >= limit:
-            break
-    return unique_qs
-
-def generate_followups(query, num_return_sequences=3):
+def generate_followups(query, n=3):
     prompt = f"Suggest follow-up questions for: '{query}'"
-    outputs = qg_pipeline(prompt, max_length=60, num_return_sequences=num_return_sequences)
-    return [o['generated_text'].strip() for o in outputs]
+    result = qg_pipeline(prompt, max_length=60, num_return_sequences=n)
+    return [r['generated_text'] for r in result]
 
-# === Flask App ===
-app = Flask(__name__)
-
-# === UI Template ===
+# Minimal HTML template
 HTML = """
 <!DOCTYPE html>
 <html>
-<head>
-    <title>University Chatbot</title>
-</head>
+<head><title>University Chatbot</title></head>
 <body>
     <h2>🎓 University Chatbot</h2>
     <form method="post">
-        <input name="query" placeholder="Ask a question..." style="width:300px;" required>
-        <button type="submit">Submit</button>
+        <input name="query" required style="width:300px;" placeholder="Ask a question...">
+        <button type="submit">Ask</button>
     </form>
     {% if response %}
-    <p><strong>Bot:</strong> {{ response }}</p>
+        <p><b>Bot:</b> {{ response }}</p>
     {% endif %}
     {% if suggestions %}
-    <p><strong>Related questions:</strong></p>
-    <ul>{% for q in suggestions %}<li>{{ q }}</li>{% endfor %}</ul>
+        <p><b>Related:</b></p><ul>{% for s in suggestions %}<li>{{ s }}</li>{% endfor %}</ul>
     {% endif %}
     {% if followups %}
-    <p><strong>Follow-up ideas:</strong></p>
-    <ul>{% for f in followups %}<li>{{ f }}</li>{% endfor %}</ul>
+        <p><b>Follow-up ideas:</b></p><ul>{% for f in followups %}<li>{{ f }}</li>{% endfor %}</ul>
     {% endif %}
 </body>
 </html>
 """
 
 @app.route("/", methods=["GET", "POST"])
-def home():
+def chatbot():
     response = ""
     suggestions = []
     followups = []
     if request.method == "POST":
         query = request.form["query"]
-        matched, matched_q, matched_a = is_exact_match(query)
+        matched, answer = is_exact_match(query)
         if matched:
-            response = matched_a
+            response = answer
         else:
-            suggestions = get_related_questions(query)
+            suggestions = get_top_matches(query)
             if not suggestions:
                 followups = generate_followups(query)
             response = "I couldn't find an exact answer."
