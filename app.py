@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 
 # === Load CSV and Build QA Dictionary ===
-df = pd.read_csv(os.path.join("data", "university_chatbot_data.csv"))
+df = pd.read_csv(os.path.join("data", "university_data.csv")
 df['question'] = df['question'].astype(str).str.strip()
 df['answer'] = df['answer'].astype(str).str.strip()
 qa_pairs = dict(zip(df['question'], df['answer']))
