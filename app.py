@@ -5,12 +5,13 @@ import os
 
 app = Flask(__name__)
 
-# === Load CSV and Build QA Dictionary ===
-df = pd.read_csv(os.path.join("data", "university_data.csv"))
+# === Load CSV ===
+df = pd.read_csv("university_data.csv")
 df['question'] = df['question'].astype(str).str.strip()
 df['answer'] = df['answer'].astype(str).str.strip()
-qa_pairs = dict(zip(df['question'], df['answer']))
-all_questions = list(qa_pairs.keys())
+questions = df['question'].tolist()
+answers = df['answer'].tolist()
+
 
 # === Preprocess: Normalize + Tokenize ===
 def preprocess(text):
