@@ -9,7 +9,7 @@ from transformers import pipeline
 app = Flask(__name__)
 
 # Load CSV
-df = pd.read_csv("university_data.csv")
+df = pd.read_csv("university_chatbot_data.csv")
 df['question'] = df['question'].astype(str).str.strip()
 df['answer'] = df['answer'].astype(str).str.strip()
 questions = df['question'].tolist()
