@@ -2,15 +2,5 @@ services:
   - type: web
     name: university-chatbot
     env: python
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn app:app"
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.11
-    autoDeploy: true
-    buildFilter:
-      paths:
-        - app.py
-        - data/university_chatbot_data.csv
-        - requirements.txt
+    buildCommand: ""
+    startCommand: python3 app.py
