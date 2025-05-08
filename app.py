@@ -2,7 +2,7 @@ from flask import Flask, request, render_template_string
 import pandas as pd
 import numpy as np
 import re
-import faiss
+from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 
@@ -14,20 +14,18 @@ df['answer'] = df['answer'].astype(str).str.strip()
 questions = df['question'].tolist()
 answers = df['answer'].tolist()
 
-# === Embedding & FAISS Setup ===
+# === Embedding Setup ===
 embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 question_embeddings = embed_model.encode(questions).astype('float32')
-index = faiss.IndexFlatL2(question_embeddings.shape[1])
-index.add(question_embeddings)
 
-# === Load FLAN-T5 for RAQG ===
+# === FLAN-T5 for Follow-up Question Generation ===
 qg_pipeline = pipeline("text2text-generation", model="google/flan-t5-base")
 
-# === Normalize ===
+# === Normalize Function ===
 def normalize(text):
     return re.sub(r'[^\w\s]', '', text.strip().lower())
 
-# === Exact Match ===
+# === Exact Match Checker ===
 def is_exact_match(query):
     nq = normalize(query)
     for i, q in enumerate(questions):
@@ -35,23 +33,23 @@ def is_exact_match(query):
             return True, answers[i]
     return False, None
 
-# === Semantic Suggestions via FAISS ===
+# === Semantic Search (Cosine Similarity) ===
 def get_semantic_matches(query, top_k=5):
     query_vec = embed_model.encode([query]).astype('float32')
-    distances, indices = index.search(query_vec, top_k)
-    suggested = [questions[i] for i in indices[0] if i < len(questions)]
-    return suggested
+    sims = cosine_similarity(query_vec, question_embeddings)[0]
+    top_indices = np.argsort(sims)[::-1][:top_k]
+    return [questions[i] for i in top_indices]
 
-# === Generate Follow-up Questions (RAQG) ===
+# === Follow-up Question Generator ===
 def generate_followups(query):
     prompt = f"Suggest 3 follow-up university questions for: {query}"
-    out = qg_pipeline(prompt, max_length=60, num_return_sequences=1)[0]['generated_text']
-    return out.strip().split("\n")
+    output = qg_pipeline(prompt, max_length=60, num_return_sequences=1)[0]['generated_text']
+    return output.strip().split("\n")
 
 # === Flask App ===
 app = Flask(__name__)
 
-# === Frontend Template ===
+# === HTML Template ===
 HTML = '''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -161,7 +159,7 @@ HTML = '''<!DOCTYPE html>
 </html>
 '''
 
-# === Route ===
+# === Routes ===
 @app.route("/", methods=["GET", "POST"])
 def home():
     response = ""
