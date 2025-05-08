@@ -1,9 +1,6 @@
 from flask import Flask, request, render_template_string
 import pandas as pd
 import re
-import os
-
-app = Flask(__name__)
 
 # === Load CSV ===
 df = pd.read_csv("university_data.csv")
@@ -12,32 +9,32 @@ df['answer'] = df['answer'].astype(str).str.strip()
 questions = df['question'].tolist()
 answers = df['answer'].tolist()
 
+# === Initialize App ===
+app = Flask(__name__)
 
-# === Preprocess: Normalize + Tokenize ===
-def preprocess(text):
-    text = re.sub(r"[^\w\s]", "", text.lower().strip())
-    return set(text.split())
+# === Text Normalizer ===
+def normalize(text):
+    return re.sub(r'[^\w\s]', '', text.strip().lower())
 
-# === Jaccard Similarity for Match & Ranking ===
-def jaccard_similarity(a, b):
-    set_a = preprocess(a)
-    set_b = preprocess(b)
-    if not set_a or not set_b:
-        return 0.0
-    return len(set_a & set_b) / len(set_a | set_b)
-
-# === Matching Function ===
-def find_answer(user_query):
-    for question, answer in qa_pairs.items():
-        if preprocess(user_query) == preprocess(question):
-            return True, answer
+# === Exact Match Function ===
+def is_exact_match(query):
+    nq = normalize(query)
+    for i, q in enumerate(questions):
+        if normalize(q) == nq:
+            return True, answers[i]
     return False, None
 
-# === Rank Related Questions by Similarity Score ===
-def get_ranked_suggestions(user_query, top_n=5):
-    scores = [(q, jaccard_similarity(user_query, q)) for q in all_questions]
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return [q for q, score in scores if score > 0][:top_n]
+# === Related Questions (Substring Matching) ===
+def get_related_questions(query, limit=10):
+    keywords = normalize(query).split()
+    related = []
+    seen = set()
+    for q in questions:
+        q_norm = normalize(q)
+        if any(k in q_norm for k in keywords) and q not in seen:
+            related.append(q)
+            seen.add(q)
+    return related[:limit]
 
 # === HTML Template ===
 HTML = '''
