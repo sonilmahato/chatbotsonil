@@ -128,15 +128,15 @@ def home():
     response = ""
     suggestions = []
     if request.method == "POST":
-        query = request.form.get("query", "")
-        match, answer = find_answer(query)
+        query = request.form["query"]
+        match, answer = is_exact_match(query)
         if match:
             response = answer + " Would you like to ask another question?"
         else:
-            response = "Sorry, I couldn't find an exact answer."
-            suggestions = get_ranked_suggestions(query)
+            response = "I couldn’t find an exact answer."
+            suggestions = get_related_questions(query)
     return render_template_string(HTML, response=response, suggestions=suggestions)
 
-# === Render-Compatible Entry ===
+# === Run App ===
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=5000)
